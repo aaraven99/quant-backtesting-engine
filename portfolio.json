@@ -1,0 +1,12 @@
+{
+  "title": "Quant Backtesting Engine",
+  "slug": "quant-backtesting-engine",
+  "category": "Quantitative Finance",
+  "summary": "Execution-aware Python research backtester with transaction costs, signal timing safeguards, and risk reporting.",
+  "technologies": ["Python", "pandas", "NumPy", "yfinance"],
+  "highlights": ["Shifts signals before execution to prevent look-ahead bias", "Models commission and slippage", "Reports drawdown and risk-adjusted performance"],
+  "githubUrl": "https://github.com/aaraven99/quant-backtesting-engine",
+  "liveUrl": "",
+  "image": "assets/portfolio-preview.png",
+  "featured": true
+}

@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-backtesting-engine"
+version = "0.1.0"
+description = "A reproducible, execution-aware research backtester."
+requires-python = ">=3.12"
+dependencies = ["numpy>=2.0,<3", "pandas>=2.2,<3", "yfinance>=0.2.50,<1", "matplotlib>=3.9,<4"]
+
+[project.scripts]
+backtesting-engine = "backtesting_engine.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
