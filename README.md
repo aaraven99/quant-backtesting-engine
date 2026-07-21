@@ -31,6 +31,12 @@ ruff format --check .
 pytest
 ```
 
+## Data, output, and troubleshooting
+
+The command retrieves adjusted historical bars with yfinance and writes the result to stdout; it does not submit any orders. Use valid exchange symbols and an end date after the start date. If data is empty, confirm the ticker and retry later because yfinance can be delayed or temporarily unavailable. Start with a short period when diagnosing setup issues, then use a longer, fixed period for comparable research.
+
+Signals are shifted to next-bar execution deliberately: changing that timing changes the backtest and can introduce look-ahead bias. Review the trade ledger, costs, slippage, drawdown, and annualization assumptions before comparing strategies. The test suite uses deterministic local inputs and does not require a data-provider key.
+
 ## Assumptions and limitations
 
 Orders are sized and filled at the next available bar close. This compact research engine does not model intraday liquidity, corporate actions beyond adjusted prices, or portfolio-level margin.
