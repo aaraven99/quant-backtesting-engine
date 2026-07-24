@@ -1,0 +1,42 @@
+name: Dashboard CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Python dependencies
+        run: pip install -e . fastapi httpx pytest ruff uvicorn
+      - name: Lint and test Python
+        run: |
+          ruff check .
+          ruff format --check .
+          pytest
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dashboard dependencies
+        run: npm ci
+      - name: Check dashboard
+        run: npm run check
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Start API and production dashboard
+        run: |
+          uvicorn api.index:app --host 127.0.0.1 --port 8000 &
+          API_PROXY_URL=http://127.0.0.1:8000 npm run start &
+      - name: Run browser smoke tests
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        run: npx wait-on http://127.0.0.1:3000 && npm run test:e2e -- --project=desktop

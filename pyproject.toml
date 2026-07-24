@@ -7,7 +7,14 @@ name = "quant-backtesting-engine"
 version = "0.1.0"
 description = "A reproducible, execution-aware research backtester."
 requires-python = ">=3.12"
-dependencies = ["numpy>=2.0,<3", "pandas>=2.2,<3", "yfinance>=0.2.50,<1", "matplotlib>=3.9,<4"]
+dependencies = [
+    "fastapi>=0.116,<1",
+    "matplotlib>=3.9,<4",
+    "numpy>=2.0,<3",
+    "pandas>=2.2,<3",
+    "pydantic>=2.11,<3",
+    "yfinance>=0.2.50,<1",
+]
 
 [project.scripts]
 backtesting-engine = "backtesting_engine.cli:main"

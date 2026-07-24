@@ -2,6 +2,17 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+.tmp-tests/
 *.pyc
 .env
 output/
+.vercel/
+node_modules/
+.next/
+coverage/
+playwright-report/
+test-results/
+dashboard/
+*.tsbuildinfo
+
+.vercel

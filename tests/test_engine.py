@@ -3,7 +3,7 @@ import pytest
 
 from backtesting_engine.engine import BacktestConfig, run_backtest
 from backtesting_engine.metrics import drawdown
-from backtesting_engine.strategies import sma_crossover
+from backtesting_engine.strategies import rsi_mean_reversion, sma_crossover
 
 
 def test_signal_is_shifted_before_execution() -> None:
@@ -26,3 +26,8 @@ def test_drawdown_and_empty_data() -> None:
 def test_strategy_windows_are_valid() -> None:
     with pytest.raises(ValueError):
         sma_crossover(pd.Series([1, 2, 3]), 5, 5)
+
+
+def test_rsi_thresholds_are_validated() -> None:
+    with pytest.raises(ValueError):
+        rsi_mean_reversion(pd.Series([1, 2, 3]), 14, 80, 20)

@@ -1,5 +1,7 @@
 # Quant Backtesting Engine
 
+[Live dashboard](https://quant-backtesting-engine.vercel.app)
+
 ![Generated equity-curve demonstration](assets/portfolio-preview.png)
 
 A modular Python backtester that makes execution assumptions, costs, and signal timing explicit.
