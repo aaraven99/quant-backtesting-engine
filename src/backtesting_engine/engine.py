@@ -25,9 +25,10 @@ class BacktestResult:
 
 
 def run_backtest(
-    close: pd.Series, signal: pd.Series, config: BacktestConfig = BacktestConfig()
+    close: pd.Series, signal: pd.Series, config: BacktestConfig | None = None
 ) -> BacktestResult:
     """Backtest one instrument at next-bar close; signals are shifted to prevent look-ahead."""
+    config = config or BacktestConfig()
     prices = pd.to_numeric(close, errors="coerce").dropna().astype(float)
     if prices.empty:
         raise ValueError("price data is empty")

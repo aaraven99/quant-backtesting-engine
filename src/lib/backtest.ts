@@ -1,9 +1,20 @@
 export type BacktestFormValues = {
   ticker: string;
-  dataset: "trending" | "sideways" | "high-volatility" | "crash" | "synthetic";
+  dataset: "daily" | "weekly";
   start_date: string;
   end_date: string;
-  strategy: "sma-crossover" | "rsi-mean-reversion";
+  strategy:
+    | "sma-crossover"
+    | "ema-crossover"
+    | "rsi-mean-reversion"
+    | "macd"
+    | "bollinger-mean-reversion"
+    | "donchian-breakout"
+    | "price-momentum"
+    | "dual-momentum"
+    | "zscore-mean-reversion"
+    | "volatility-filtered-trend"
+    | "buy-and-hold";
   initial_capital: number;
   commission: number;
   slippage: number;
@@ -63,7 +74,7 @@ export type ApiEnvelope = {
 
 export const defaultConfiguration: BacktestFormValues = {
   ticker: "AAPL",
-  dataset: "trending",
+  dataset: "daily",
   start_date: "2020-01-01",
   end_date: "2025-01-01",
   strategy: "sma-crossover",

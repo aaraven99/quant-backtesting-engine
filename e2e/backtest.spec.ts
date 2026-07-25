@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-test("runs the sample moving-average workflow", async ({ page }, testInfo) => {
+test("runs the historical moving-average workflow", async ({ page }, testInfo) => {
   const runtimeErrors: string[] = [];
   page.on("pageerror", (error) => runtimeErrors.push(error.message));
   page.on("console", (message) => {
     if (message.type() === "error") runtimeErrors.push(message.text());
   });
   await page.goto("/");
-  await expect(page.getByText("Sample Data").first()).toBeVisible();
+  await expect(page.getByText("Historical Market Data").first()).toBeVisible();
   await page.getByLabel("Validate OHLCV CSV").setInputFiles({
     name: "sample-prices.csv",
     mimeType: "text/csv",

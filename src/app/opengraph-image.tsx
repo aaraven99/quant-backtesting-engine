@@ -13,7 +13,7 @@ export default function OpenGraphImage() {
           <div style={{ width: 48, height: 48, border: "1px solid #64d6ad", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#64d6ad", fontSize: 25, fontWeight: 700 }}>Q</div>
           <span style={{ fontSize: 21, letterSpacing: 4, color: "#94a3b8" }}>AARAV SHAH / QUANT RESEARCH</span>
         </div>
-        <div style={{ border: "1px solid #2e4356", borderRadius: 999, padding: "10px 18px", color: "#64d6ad", fontSize: 18 }}>SAMPLE DATA</div>
+        <div style={{ border: "1px solid #2e4356", borderRadius: 999, padding: "10px 18px", color: "#64d6ad", fontSize: 18 }}>HISTORICAL MARKET DATA</div>
       </div>
       <div style={{ display: "flex", gap: 54, alignItems: "flex-end" }}>
         <div style={{ display: "flex", flexDirection: "column", width: 650 }}>

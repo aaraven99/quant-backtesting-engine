@@ -66,10 +66,22 @@ import {
 const schema = z
   .object({
     ticker: z.string().trim().min(1).max(12).regex(/^[A-Za-z0-9.\-]+$/),
-    dataset: z.enum(["trending", "sideways", "high-volatility", "crash", "synthetic"]),
+    dataset: z.enum(["daily", "weekly"]),
     start_date: z.string().min(1),
     end_date: z.string().min(1),
-    strategy: z.enum(["sma-crossover", "rsi-mean-reversion"]),
+    strategy: z.enum([
+      "sma-crossover",
+      "ema-crossover",
+      "rsi-mean-reversion",
+      "macd",
+      "bollinger-mean-reversion",
+      "donchian-breakout",
+      "price-momentum",
+      "dual-momentum",
+      "zscore-mean-reversion",
+      "volatility-filtered-trend",
+      "buy-and-hold",
+    ]),
     initial_capital: z.number().positive().max(100_000_000),
     commission: z.number().min(0).max(0.05),
     slippage: z.number().min(0).max(0.05),
@@ -318,7 +330,7 @@ function Results({ result, runtime }: { result: BacktestResult; runtime?: number
             </AreaChart>
           </ResponsiveContainer>
         </ChartShell>
-        <ChartShell title="Asset price" summary="Deterministic sample close used by the selected strategy.">
+        <ChartShell title="Asset price" summary="Adjusted historical market close used by the selected strategy.">
           <ResponsiveContainer height="100%" width="100%">
             <LineChart data={sampled} margin={{ left: 8, right: 8, top: 12 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -483,8 +495,8 @@ export function BacktestLab() {
               </div>
             </div>
             <nav aria-label="Project links" className="flex flex-wrap items-center gap-2">
-              <Badge className="status-badge" variant="outline">Sample Data</Badge>
-              <Badge variant="secondary">Educational use</Badge>
+              <Badge className="status-badge" variant="outline">Historical Market Data</Badge>
+              <Badge variant="secondary">Research use</Badge>
               <Button asChild size="sm" variant="ghost">
                 <a href="https://github.com/aaraven99/quant-backtesting-engine" rel="noreferrer" target="_blank">GitHub</a>
               </Button>
@@ -503,17 +515,17 @@ export function BacktestLab() {
                 Test a strategy. See every assumption.
               </h1>
               <p className="mt-5 max-w-2xl text-balance text-base leading-7 text-muted-foreground sm:text-lg">
-                Configure a deterministic market scenario, model commissions and slippage, then inspect net returns, drawdowns, rolling risk, and every completed trade.
+                Select a real ticker and historical interval, model commissions and slippage, then inspect net returns, drawdowns, rolling risk, and every completed trade.
               </p>
               <div className="mt-7 flex flex-wrap gap-3">
                 <Button onClick={loadDemo} size="lg"><Play aria-hidden="true" /> Run guided demo</Button>
                 <Button asChild size="lg" variant="outline"><a href="#methodology"><BookOpen aria-hidden="true" /> Read methodology</a></Button>
               </div>
             </div>
-            <div className="hero-tape" aria-label="Sample strategy context">
+            <div className="hero-tape" aria-label="Historical strategy context">
               <div><span>Execution</span><strong>Next-bar close</strong></div>
               <div><span>Signal policy</span><strong>Shifted 1 bar</strong></div>
-              <div><span>Universe</span><strong>Deterministic sample</strong></div>
+              <div><span>Universe</span><strong>User-selected ticker</strong></div>
               <div><span>Public limit</span><strong>15 years</strong></div>
             </div>
           </section>
@@ -534,16 +546,13 @@ export function BacktestLab() {
                         <FieldError message={form.formState.errors.ticker?.message} />
                       </div>
                       <div className="space-y-2">
-                        <Label>Dataset</Label>
+                        <Label>Market interval</Label>
                         <Controller control={form.control} name="dataset" render={({ field }) => (
                           <Select onValueChange={field.onChange} value={field.value}>
-                            <SelectTrigger aria-label="Dataset"><SelectValue /></SelectTrigger>
+                            <SelectTrigger aria-label="Market interval"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="trending">Trending</SelectItem>
-                              <SelectItem value="sideways">Sideways</SelectItem>
-                              <SelectItem value="high-volatility">High volatility</SelectItem>
-                              <SelectItem value="crash">Crash period</SelectItem>
-                              <SelectItem value="synthetic">Synthetic test</SelectItem>
+                              <SelectItem value="daily">Daily adjusted closes</SelectItem>
+                              <SelectItem value="weekly">Weekly adjusted closes</SelectItem>
                             </SelectContent>
                           </Select>
                         )} />
@@ -577,22 +586,34 @@ export function BacktestLab() {
                       <Controller control={form.control} name="strategy" render={({ field }) => (
                         <Select onValueChange={field.onChange} value={field.value}>
                           <SelectTrigger aria-label="Strategy"><SelectValue /></SelectTrigger>
-                          <SelectContent><SelectItem value="sma-crossover">Moving-average crossover</SelectItem><SelectItem value="rsi-mean-reversion">RSI mean reversion</SelectItem></SelectContent>
+                          <SelectContent>
+                            <SelectItem value="sma-crossover">SMA crossover</SelectItem>
+                            <SelectItem value="ema-crossover">EMA crossover</SelectItem>
+                            <SelectItem value="rsi-mean-reversion">RSI mean reversion</SelectItem>
+                            <SelectItem value="macd">MACD signal line</SelectItem>
+                            <SelectItem value="bollinger-mean-reversion">Bollinger mean reversion</SelectItem>
+                            <SelectItem value="donchian-breakout">Donchian breakout</SelectItem>
+                            <SelectItem value="price-momentum">Price momentum</SelectItem>
+                            <SelectItem value="dual-momentum">Dual momentum</SelectItem>
+                            <SelectItem value="zscore-mean-reversion">Z-score mean reversion</SelectItem>
+                            <SelectItem value="volatility-filtered-trend">Volatility-filtered trend</SelectItem>
+                            <SelectItem value="buy-and-hold">Buy and hold</SelectItem>
+                          </SelectContent>
                         </Select>
                       )} />
                     </div>
-                    {strategy === "sma-crossover" ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-2"><Label htmlFor="fast_window">Fast window</Label><Input id="fast_window" type="number" {...form.register("fast_window", { valueAsNumber: true })} /><FieldError message={form.formState.errors.fast_window?.message} /></div>
-                        <div className="space-y-2"><Label htmlFor="slow_window">Slow window</Label><Input id="slow_window" type="number" {...form.register("slow_window", { valueAsNumber: true })} /></div>
-                      </div>
-                    ) : (
+                    {strategy === "rsi-mean-reversion" ? (
                       <div className="grid grid-cols-3 gap-3">
                         <div className="space-y-2"><Label htmlFor="rsi_period">Period</Label><Input id="rsi_period" type="number" {...form.register("rsi_period", { valueAsNumber: true })} /></div>
                         <div className="space-y-2"><Label htmlFor="rsi_entry">Entry</Label><Input id="rsi_entry" type="number" {...form.register("rsi_entry", { valueAsNumber: true })} /></div>
                         <div className="space-y-2"><Label htmlFor="rsi_exit">Exit</Label><Input id="rsi_exit" type="number" {...form.register("rsi_exit", { valueAsNumber: true })} /></div>
                       </div>
-                    )}
+                    ) : strategy !== "buy-and-hold" ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2"><Label htmlFor="fast_window">Fast window</Label><Input id="fast_window" type="number" {...form.register("fast_window", { valueAsNumber: true })} /><FieldError message={form.formState.errors.fast_window?.message} /></div>
+                        <div className="space-y-2"><Label htmlFor="slow_window">Slow window</Label><Input id="slow_window" type="number" {...form.register("slow_window", { valueAsNumber: true })} /></div>
+                      </div>
+                    ) : null}
                     <Separator />
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2"><Label htmlFor="initial_capital">Initial capital</Label><Input id="initial_capital" type="number" {...form.register("initial_capital", { valueAsNumber: true })} /></div>
@@ -619,9 +640,9 @@ export function BacktestLab() {
 
             <section className="min-w-0 space-y-5" aria-label="Backtest output">
               {error ? (
-                <Alert variant="destructive"><TriangleAlert aria-hidden="true" /><AlertTitle>{error.code === "OFFLINE" ? "Service unavailable" : "Backtest not completed"}</AlertTitle><AlertDescription>{error.message} Try the guided sample again in a moment.</AlertDescription></Alert>
+                <Alert variant="destructive"><TriangleAlert aria-hidden="true" /><AlertTitle>{error.code === "OFFLINE" ? "Service unavailable" : "Backtest not completed"}</AlertTitle><AlertDescription>{error.message} Check the ticker and market-data availability, then try again.</AlertDescription></Alert>
               ) : null}
-              {warnings.map((warning) => <Alert key={warning}><TriangleAlert aria-hidden="true" /><AlertTitle>Sample-data notice</AlertTitle><AlertDescription>{warning}</AlertDescription></Alert>)}
+              {warnings.map((warning) => <Alert key={warning}><TriangleAlert aria-hidden="true" /><AlertTitle>Historical-data notice</AlertTitle><AlertDescription>{warning}</AlertDescription></Alert>)}
               {isCalculating ? (
                 <div aria-live="polite" className="space-y-5"><span className="sr-only">Calculating backtest results</span><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-28" /></div><Skeleton className="h-[420px]" /></div>
               ) : result ? (
@@ -640,7 +661,7 @@ export function BacktestLab() {
           <section className="mt-10 scroll-mt-8" id="methodology"><Methodology /><div className="mt-5"><Assumptions /></div></section>
         </main>
 
-        <footer className="mt-12 border-t"><div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-8 text-sm text-muted-foreground sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8"><p>Built for transparent quantitative-finance education.</p><p>Not investment advice. Simulated results do not represent actual trading.</p></div></footer>
+        <footer className="mt-12 border-t"><div className="mx-auto flex max-w-[1600px] flex-col gap-3 px-4 py-8 text-sm text-muted-foreground sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8"><p>Built for transparent quantitative-finance research.</p><p>Not investment advice. Historical results do not predict future performance.</p></div></footer>
       </div>
     </TooltipProvider>
   );
@@ -651,8 +672,8 @@ function Methodology() {
     <Card>
       <CardHeader><CardTitle>Methodology</CardTitle><CardDescription>How the browser configuration becomes a cost-aware equity curve.</CardDescription></CardHeader>
       <CardContent className="grid gap-6 md:grid-cols-3">
-        <div><span className="step-number">01</span><h3 className="mt-3 font-semibold">Generate the sample</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">A seeded, deterministic price path represents the selected teaching regime. No sample observation is presented as live market data.</p></div>
-        <div><span className="step-number">02</span><h3 className="mt-3 font-semibold">Shift the signal</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Moving-average or RSI signals are shifted one full bar before execution, preventing same-bar look-ahead.</p></div>
+        <div><span className="step-number">01</span><h3 className="mt-3 font-semibold">Load market history</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Adjusted closes are fetched for the selected ticker and date range. The engine never substitutes generated prices.</p></div>
+        <div><span className="step-number">02</span><h3 className="mt-3 font-semibold">Shift the signal</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Every strategy signal is shifted one full bar before execution, preventing same-bar look-ahead.</p></div>
         <div><span className="step-number">03</span><h3 className="mt-3 font-semibold">Apply execution costs</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">The authoritative Python engine rebalances at next-bar close and deducts explicit commission and slippage assumptions.</p></div>
         <Alert className="md:col-span-3"><TriangleAlert aria-hidden="true" /><AlertTitle>Look-ahead-bias warning</AlertTitle><AlertDescription>Changing the execution convention, using revised data, or selecting parameters after viewing the outcome can materially inflate apparent performance.</AlertDescription></Alert>
       </CardContent>
@@ -665,7 +686,7 @@ function Assumptions() {
     <Card>
       <CardHeader><CardTitle>Assumptions, limitations, and disclaimer</CardTitle></CardHeader>
       <CardContent className="grid gap-6 text-sm leading-6 text-muted-foreground md:grid-cols-3">
-        <div><h3 className="font-semibold text-foreground">Assumptions</h3><p className="mt-2">Orders fill at the next sampled close, liquidity is sufficient, costs scale linearly, and fractional shares follow the selected setting.</p></div>
+        <div><h3 className="font-semibold text-foreground">Assumptions</h3><p className="mt-2">Orders fill at the next historical close, liquidity is sufficient, costs scale linearly, and fractional shares follow the selected setting.</p></div>
         <div><h3 className="font-semibold text-foreground">Limitations</h3><p className="mt-2">The public demo is capped at 15 years and uses simplified fills. It omits taxes, borrow availability, queue position, market impact, and corporate actions.</p></div>
         <div><h3 className="font-semibold text-foreground">Financial disclaimer</h3><p className="mt-2">This application is for education and software demonstration only. It is not investment advice, an offer, or a prediction of future results.</p></div>
         <div className="md:col-span-3 rounded-lg border bg-muted/30 p-4"><strong className="text-foreground">Metric guide:</strong> {metricTip("Sharpe", "Annualized return divided by annualized volatility in this simplified demonstration.")}, {metricTip("Sortino", "Annualized return divided by downside volatility.")}, and {metricTip("Calmar", "Annualized return divided by absolute maximum drawdown.")} are scale-free summaries, not guarantees.</div>

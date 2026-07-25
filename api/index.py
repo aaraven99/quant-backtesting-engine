@@ -12,6 +12,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+import yfinance as yf
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -20,9 +21,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from backtesting_engine.engine import BacktestConfig, run_backtest  # noqa: E402
-from backtesting_engine.metrics import drawdown  # noqa: E402
-from backtesting_engine.strategies import rsi_mean_reversion, sma_crossover  # noqa: E402
+from backtesting_engine.engine import BacktestConfig, run_backtest
+from backtesting_engine.metrics import drawdown
 
 MAX_YEARS = 15
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
@@ -36,10 +36,22 @@ class StrictModel(BaseModel):
 
 class BacktestRequest(StrictModel):
     ticker: str = Field(default="AAPL", min_length=1, max_length=12, pattern=r"^[A-Za-z0-9.\-]+$")
-    dataset: Literal["trending", "sideways", "high-volatility", "crash", "synthetic"] = "trending"
+    dataset: Literal["daily", "weekly"] = "daily"
     start_date: date = date(2020, 1, 1)
     end_date: date = date(2025, 1, 1)
-    strategy: Literal["sma-crossover", "rsi-mean-reversion"] = "sma-crossover"
+    strategy: Literal[
+        "sma-crossover",
+        "ema-crossover",
+        "rsi-mean-reversion",
+        "macd",
+        "bollinger-mean-reversion",
+        "donchian-breakout",
+        "price-momentum",
+        "dual-momentum",
+        "zscore-mean-reversion",
+        "volatility-filtered-trend",
+        "buy-and-hold",
+    ] = "sma-crossover"
     initial_capital: float = Field(default=100_000, gt=0, le=100_000_000)
     commission: float = Field(default=0.001, ge=0, le=0.05)
     slippage: float = Field(default=0.0005, ge=0, le=0.05)
@@ -54,12 +66,18 @@ class BacktestRequest(StrictModel):
     maximum_exposure: float = Field(default=1, gt=0, le=1)
 
     @model_validator(mode="after")
-    def validate_configuration(self) -> "BacktestRequest":
+    def validate_configuration(self) -> BacktestRequest:
         if self.end_date <= self.start_date:
             raise ValueError("End date must be after start date.")
         if self.end_date - self.start_date > timedelta(days=366 * MAX_YEARS):
             raise ValueError(f"Public demos are limited to {MAX_YEARS} years.")
-        if self.strategy == "sma-crossover" and self.fast_window >= self.slow_window:
+        if self.strategy in {
+            "sma-crossover",
+            "ema-crossover",
+            "macd",
+            "dual-momentum",
+            "volatility-filtered-trend",
+        } and self.fast_window >= self.slow_window:
             raise ValueError("Fast window must be shorter than slow window.")
         if self.rsi_entry >= self.rsi_exit:
             raise ValueError("RSI entry must be below RSI exit.")
@@ -92,36 +110,94 @@ def _success(data: object, request_id: str, started: float, warnings: list[str] 
         "data": _finite(data),
         "meta": {
             "requestId": request_id,
-            "dataMode": "sample",
+            "dataMode": "historical-market",
             "calculationTimeMs": round((time.perf_counter() - started) * 1000, 2),
         },
         "warnings": warnings or [],
     }
 
 
-def _sample_prices(kind: str, start: date, end: date) -> pd.Series:
-    index = pd.bdate_range(start, end, inclusive="left")
-    if len(index) < 80:
-        raise ValueError("Choose a date range with at least 80 business days.")
-    seed = {"trending": 11, "sideways": 23, "high-volatility": 37, "crash": 41, "synthetic": 7}[
-        kind
-    ]
-    rng = np.random.default_rng(seed)
-    n = len(index)
-    if kind == "synthetic":
-        returns = np.full(n, 0.00035) + 0.003 * np.sin(np.arange(n) / 13)
-    elif kind == "sideways":
-        returns = rng.normal(0.00002, 0.008, n) - 0.0002 * np.sin(np.arange(n) / 18)
-    elif kind == "high-volatility":
-        returns = rng.normal(0.00025, 0.027, n)
-    elif kind == "crash":
-        returns = rng.normal(0.00035, 0.011, n)
-        crash_start = max(20, n // 2 - 18)
-        returns[crash_start : crash_start + 22] += -0.022
-        returns[crash_start + 22 : crash_start + 52] += 0.009
+def _market_prices(ticker: str, start: date, end: date, interval: str) -> pd.Series:
+    frame = yf.download(
+        ticker,
+        start=start.isoformat(),
+        end=end.isoformat(),
+        interval="1d" if interval == "daily" else "1wk",
+        auto_adjust=True,
+        progress=False,
+        threads=False,
+        timeout=15,
+    )
+    if frame.empty or "Close" not in frame:
+        raise ValueError(f"No historical market data was returned for {ticker}.")
+    close = frame["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+    prices = pd.to_numeric(close, errors="coerce").dropna()
+    prices.index = pd.to_datetime(prices.index).tz_localize(None)
+    prices.name = "close"
+    if len(prices) < 80:
+        raise ValueError("The selected ticker and date range must provide at least 80 observations.")
+    return prices
+
+
+def _rsi(prices: pd.Series, period: int) -> pd.Series:
+    change = prices.diff()
+    gains = change.clip(lower=0).rolling(period).mean()
+    losses = -change.clip(upper=0).rolling(period).mean()
+    return 100 - 100 / (1 + gains / losses.replace(0, np.nan))
+
+
+def _strategy_signal(prices: pd.Series, payload: BacktestRequest) -> pd.Series:
+    fast = payload.fast_window
+    slow = payload.slow_window
+    strategy = payload.strategy
+    if strategy == "buy-and-hold":
+        signal = pd.Series(1.0, index=prices.index)
+    elif strategy == "sma-crossover":
+        signal = (prices.rolling(fast).mean() > prices.rolling(slow).mean()).astype(float)
+    elif strategy == "ema-crossover":
+        signal = (prices.ewm(span=fast).mean() > prices.ewm(span=slow).mean()).astype(float)
+    elif strategy == "rsi-mean-reversion":
+        oscillator = _rsi(prices, payload.rsi_period)
+        state = pd.Series(np.nan, index=prices.index)
+        state[oscillator <= payload.rsi_entry] = 1
+        state[oscillator >= payload.rsi_exit] = 0
+        signal = state.ffill().fillna(0)
+    elif strategy == "macd":
+        macd = prices.ewm(span=fast).mean() - prices.ewm(span=slow).mean()
+        signal = (macd > macd.ewm(span=9).mean()).astype(float)
+    elif strategy == "bollinger-mean-reversion":
+        mean = prices.rolling(slow).mean()
+        band = prices.rolling(slow).std() * 2
+        state = pd.Series(np.nan, index=prices.index)
+        state[prices < mean - band] = 1
+        state[prices >= mean] = 0
+        signal = state.ffill().fillna(0)
+    elif strategy == "donchian-breakout":
+        upper = prices.shift(1).rolling(slow).max()
+        lower = prices.shift(1).rolling(fast).min()
+        state = pd.Series(np.nan, index=prices.index)
+        state[prices > upper] = 1
+        state[prices < lower] = 0
+        signal = state.ffill().fillna(0)
+    elif strategy == "price-momentum":
+        signal = (prices.pct_change(slow) > 0).astype(float)
+    elif strategy == "dual-momentum":
+        signal = ((prices.pct_change(fast) > 0) & (prices.pct_change(slow) > 0)).astype(float)
+    elif strategy == "zscore-mean-reversion":
+        mean = prices.rolling(slow).mean()
+        zscore = (prices - mean) / prices.rolling(slow).std()
+        state = pd.Series(np.nan, index=prices.index)
+        state[zscore < -1.5] = 1
+        state[zscore > 0] = 0
+        signal = state.ffill().fillna(0)
     else:
-        returns = rng.normal(0.00045, 0.011, n)
-    return pd.Series(100 * np.exp(np.cumsum(returns)), index=index, name="close")
+        trend = prices.rolling(fast).mean() > prices.rolling(slow).mean()
+        realized = prices.pct_change().rolling(fast).std() * np.sqrt(252)
+        cap = realized.rolling(slow).median()
+        signal = (trend & (realized <= cap)).astype(float)
+    return signal.fillna(0)
 
 
 def _round_trips(events: pd.DataFrame) -> list[dict[str, object]]:
@@ -168,11 +244,8 @@ def _round_trips(events: pd.DataFrame) -> list[dict[str, object]]:
 
 
 def _run(payload: BacktestRequest) -> tuple[dict[str, object], list[str]]:
-    prices = _sample_prices(payload.dataset, payload.start_date, payload.end_date)
-    if payload.strategy == "sma-crossover":
-        signal = sma_crossover(prices, payload.fast_window, payload.slow_window)
-    else:
-        signal = rsi_mean_reversion(prices, payload.rsi_period, payload.rsi_entry, payload.rsi_exit)
+    prices = _market_prices(payload.ticker, payload.start_date, payload.end_date, payload.dataset)
+    signal = _strategy_signal(prices, payload)
     signal = signal * min(payload.position_size, payload.maximum_exposure)
     result = run_backtest(
         prices,
@@ -263,7 +336,12 @@ def _run(payload: BacktestRequest) -> tuple[dict[str, object], list[str]]:
                 {"name": "After costs", "return": metrics["net_performance_after_costs"]},
             ],
         },
-        ["Sample prices are deterministic teaching data and are not live market observations."],
+        [
+            (
+                "Results use adjusted historical market closes from yfinance. "
+                "Historical performance does not predict future returns."
+            )
+        ],
     )
 
 
@@ -358,20 +436,32 @@ async def handle_error(_: Request, __: Exception):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "1.0.0", "dataMode": "sample"}
+    return {"status": "ok", "version": "1.1.0", "dataMode": "historical-market"}
 
 
 @app.get("/api/backtest/presets")
 def presets():
     return {
         "success": True,
-        "data": [
-            {"id": "trending", "label": "Trending market"},
-            {"id": "sideways", "label": "Sideways market"},
-            {"id": "high-volatility", "label": "High-volatility market"},
-            {"id": "crash", "label": "Market-crash period"},
-            {"id": "synthetic", "label": "Synthetic deterministic series"},
-        ],
+        "data": {
+            "intervals": [
+                {"id": "daily", "label": "Daily adjusted closes"},
+                {"id": "weekly", "label": "Weekly adjusted closes"},
+            ],
+            "strategies": [
+                {"id": "sma-crossover", "label": "SMA crossover"},
+                {"id": "ema-crossover", "label": "EMA crossover"},
+                {"id": "rsi-mean-reversion", "label": "RSI mean reversion"},
+                {"id": "macd", "label": "MACD signal line"},
+                {"id": "bollinger-mean-reversion", "label": "Bollinger mean reversion"},
+                {"id": "donchian-breakout", "label": "Donchian breakout"},
+                {"id": "price-momentum", "label": "Price momentum"},
+                {"id": "dual-momentum", "label": "Dual momentum"},
+                {"id": "zscore-mean-reversion", "label": "Z-score mean reversion"},
+                {"id": "volatility-filtered-trend", "label": "Volatility-filtered trend"},
+                {"id": "buy-and-hold", "label": "Buy and hold"},
+            ],
+        },
     }
 
 

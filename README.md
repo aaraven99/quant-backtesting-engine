@@ -2,6 +2,8 @@
 
 [Live dashboard](https://quant-backtesting-engine.vercel.app)
 
+The public dashboard downloads adjusted historical closes for the requested ticker and interval. It never substitutes generated prices. Eleven strategies are available: SMA, EMA, RSI, MACD, Bollinger, Donchian, price momentum, dual momentum, z-score mean reversion, volatility-filtered trend, and buy-and-hold.
+
 ![Generated equity-curve demonstration](assets/portfolio-preview.png)
 
 A modular Python backtester that makes execution assumptions, costs, and signal timing explicit.
@@ -45,6 +47,6 @@ Orders are sized and filled at the next available bar close. This compact resear
 
 ## Financial disclaimer
 
-This project is intended for educational and research purposes only. It does not provide investment advice, and its outputs should not be used as the sole basis for financial decisions. Historical performance and simulated results do not guarantee future performance.
+This project is intended for educational and research purposes only. It does not provide investment advice, and its outputs should not be used as the sole basis for financial decisions. Historical performance does not guarantee future performance.
 
 MIT License. Author: Aarav Shah.
